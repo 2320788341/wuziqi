@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>⚫🔴 五子棋</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: linear-gradient(160deg, #1a1a2e, #16213e, #0f3460);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    padding: 12px;
+  }
+
+  .main-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* === 侧边栏 === */
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    min-width: 60px;
+  }
+
+  /* === 棋子堆 === */
+  .pile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    padding: 8px 6px;
+    border-radius: 16px;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .pile.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+  }
+  .pile.active {
+    animation: pileGlow 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes pileGlow {
+    0%   { background: rgba(255,255,255,0.03); }
+    100% { background: rgba(255,255,255,0.1); }
+  }
+
+  .pile-label {
+    color: #fff;
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  .pile-stack {
+    position: relative;
+    width: 44px;
+    height: 66px;
+  }
+  .pile-piece {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+  }
+  .pile-piece:nth-child(1) { top: 0;  z-index: 5; }
+  .pile-piece:nth-child(2) { top: 7px;  z-index: 4; opacity: 0.85; }
+  .pile-piece:nth-child(3) { top: 14px; z-index: 3; opacity: 0.7; }
+  .pile-piece:nth-child(4) { top: 21px; z-index: 2; opacity: 0.55; }
+  .pile-piece:nth-child(5) { top: 28px; z-index: 1; opacity: 0.4; }
+
+  .pile-piece.red-piece {
+    background: radial-gradient(circle at 35% 30%, #ff9999, #b5302a);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .pile-piece.black-piece {
+    background: radial-gradient(circle at 35% 30%, #888, #1a1a1a);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+
+  .pile-top-piece {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    transition: transform 0.15s;
+  }
+  .pile.active .pile-top-piece {
+    animation: pieceLift 0.8s ease-in-out infinite alternate;
+  }
+  @keyframes pieceLift {
+    0%   { transform: translateX(-50%) translateY(0); }
+    100% { transform: translateX(-50%) translateY(-8px); }
+  }
+
+  .pile-top-piece.red-top {
+    background: radial-gradient(circle at 35% 30%, #ff6666, #8b0000);
+    box-shadow: 0 3px 10px rgba(255,0,0,0.5);
+  }
+  .pile-top-piece.black-top {
+    background: radial-gradient(circle at 35% 30%, #777, #000);
+    box-shadow: 0 3px 10px rgba(255,255,255,0.2);
+  }
+
+  /* 已取子指示 */
+  .picked-indicator {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 20px;
+    z-index: 20;
+    animation: bounce 0.4s ease-in-out infinite alternate;
+    display: none;
+  }
+  .picked-indicator.show { display: block; }
+  @keyframes bounce {
+    0%   { transform: translateX(-50%) translateY(0); }
+    100% { transform: translateX(-50%) translateY(-6px); }
+  }
+
+  /* === 悔棋按钮 === */
+  .undo-btn {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 6px 14px;
+    font-size: 13px;
+    border-radius: 20px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    font-family: inherit;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .undo-btn:active { transform: scale(0.95); }
+  .undo-btn.red-undo  { border-color: rgba(255,100,100,0.5); color: #ff8888; }
+  .undo-btn.black-undo { border-color: rgba(180,180,180,0.5); color: #ccc; }
+  .undo-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* === 棋盘 === */
+  .board-wrap {
+    display: inline-block;
+    background: #c8a45c;
+    padding: 8px;
+    border-radius: 8px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  }
+
+  canvas {
+    display: block;
+    touch-action: manipulation;
+  }
+
+  /* === 中央区 === */
+  .center-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .title {
+    color: #fff;
+    font-size: 26px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    margin-bottom: 4px;
+  }
+  .status {
+    font-size: 17px;
+    margin-bottom: 6px;
+    height: 26px;
+    letter-spacing: 2px;
+  }
+  .hint {
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    height: 20px;
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  /* === 重新开始按钮 === */
+  .btn {
+    margin-top: 8px;
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 8px 28px;
+    font-size: 15px;
+    border-radius: 24px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .btn:active { transform: scale(0.95); }
+
+  /* === 胜利弹窗 === */
+  .overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+  .win-dialog {
+    background: #1a2740;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    padding: 32px 36px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .win-dialog .win-icon { font-size: 56px; margin-bottom: 8px; }
+  .win-dialog .win-text { color: #fff; font-size: 22px; letter-spacing: 3px; margin-bottom: 16px; }
+
+  @media (max-width: 480px) {
+    .main-row { gap: 3px; }
+    .pile { padding: 4px 2px; }
+    .pile-stack { width: 36px; height: 54px; }
+    .pile-piece { width: 28px; height: 28px; }
+    .pile-piece:nth-child(2) { top: 5px; }
+    .pile-piece:nth-child(3) { top: 10px; }
+    .pile-piece:nth-child(4) { top: 15px; }
+    .pile-piece:nth-child(5) { top: 20px; }
+    .pile-top-piece { width: 36px; height: 36px; top: -2px; }
+    .undo-btn { padding: 5px 10px; font-size: 11px; }
+    .title { font-size: 22px; }
+    .side-panel { min-width: 48px; gap: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="center-col">
+  <div class="title">⚫🔴 五 子 棋</div>
+  <div class="status" id="status" style="color:#ff6b6b">🔴 红方落子</div>
+
+  <div class="main-row">
+    <!-- 红方侧边栏 -->
+    <div class="side-panel">
+      <div class="pile active" id="redPile" onclick="pickPiece('red')">
+        <div class="pile-label">🔴 红方</div>
+        <div class="pile-stack">
+          <div class="pile-piece red-piece"></div>
+          <div class="pile-piece red-piece"></div>
+          <div class="pile-piece red-piece"></div>
+          <div class="pile-piece red-piece"></div>
+          <div class="pile-piece red-piece"></div>
+          <div class="pile-top-piece red-top"></div>
+        </div>
+        <div class="picked-indicator" id="redPicked">👆</div>
+      </div>
+      <button class="undo-btn red-undo" id="redUndo" disabled onclick="undo('red')">↩ 红方悔棋</button>
+    </div>
+
+    <!-- 棋盘 -->
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
+    </div>
+
+    <!-- 黑方侧边栏 -->
+    <div class="side-panel">
+      <div class="pile disabled" id="blackPile" onclick="pickPiece('black')">
+        <div class="pile-label">⚫ 黑方</div>
+        <div class="pile-stack">
+          <div class="pile-piece black-piece"></div>
+          <div class="pile-piece black-piece"></div>
+          <div class="pile-piece black-piece"></div>
+          <div class="pile-piece black-piece"></div>
+          <div class="pile-piece black-piece"></div>
+          <div class="pile-top-piece black-top"></div>
+        </div>
+        <div class="picked-indicator" id="blackPicked">👆</div>
+      </div>
+      <button class="undo-btn black-undo" id="blackUndo" disabled onclick="undo('black')">↩ 黑方悔棋</button>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">👈 请先点击红方棋盒取子</div>
+  <button class="btn" onclick="restart()">🔄 重新开始</button>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="win-dialog">
+    <div class="win-icon" id="winIcon"></div>
+    <div class="win-text" id="winText"></div>
+    <button class="btn" onclick="restart()">🔄 再来一局</button>
+  </div>
+</div>
+
+<script>
+const SIZE = 15;
+let grid = [];
+let currentPlayer = 'red';
+let gameOver = false;
+let winningCells = [];
+let lastMove = null;
+let piecePicked = false;
+let moveHistory = [];           // [{row, col, player}]
+let redUndoUsed = false;       // 红方本轮是否已悔棋
+let blackUndoUsed = false;     // 黑方本轮是否已悔棋
+
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+
+const MAX_SIZE = Math.min(window.innerWidth - 170, window.innerHeight - 240, 400);
+const CELL = Math.floor(MAX_SIZE / (SIZE + 1));
+const PADDING = CELL;
+const BOARD_PX = CELL * (SIZE - 1) + PADDING * 2;
+canvas.width = BOARD_PX;
+canvas.height = BOARD_PX;
+canvas.style.width = BOARD_PX + 'px';
+canvas.style.height = BOARD_PX + 'px';
+
+const redPile = document.getElementById('redPile');
+const blackPile = document.getElementById('blackPile');
+const redPicked = document.getElementById('redPicked');
+const blackPicked = document.getElementById('blackPicked');
+const redUndoBtn = document.getElementById('redUndo');
+const blackUndoBtn = document.getElementById('blackUndo');
+const statusEl = document.getElementById('status');
+const hintEl = document.getElementById('hint');
+
+// ========== 悔棋逻辑 ==========
+// 红方悔棋：只能红方刚下完、轮到黑方时使用。收回红方最后一子，回合还给红方。
+// 黑方悔棋：只能黑方刚下完、轮到红方时使用。收回黑方最后一子，回合还给黑方。
+// 每方每回合只能悔一次。
+
+function canUndo(player) {
+  if (gameOver) return false;
+  if (moveHistory.length === 0) return false;
+
+  const lastMovePlayer = moveHistory[moveHistory.length - 1].player;
+
+  // 红方悔棋条件：最后一步是红方下的，且当前轮到黑方
+  if (player === 'red') {
+    if (redUndoUsed) return false;
+    return lastMovePlayer === 'red' && currentPlayer === 'black';
+  }
+  // 黑方悔棋条件：最后一步是黑方下的，且当前轮到红方
+  if (player === 'black') {
+    if (blackUndoUsed) return false;
+    return lastMovePlayer === 'black' && currentPlayer === 'red';
+  }
+  return false;
+}
+
+function undo(player) {
+  if (!canUndo(player)) return;
+
+  const m = moveHistory.pop();
+  grid[m.row][m.col] = null;
+
+  // 回合还给悔棋方
+  currentPlayer = player;
+
+  // 更新 lastMove
+  if (moveHistory.length > 0) {
+    const prev = moveHistory[moveHistory.length - 1];
+    lastMove = [prev.row, prev.col];
+  } else {
+    lastMove = null;
+  }
+
+  winningCells = [];
+  piecePicked = false;
+
+  // 标记已悔棋
+  if (player === 'red') redUndoUsed = true;
+  if (player === 'black') blackUndoUsed = true;
+
+  updateAll();
+  draw();
+}
+
+// ========== 游戏逻辑 ==========
+function pickPiece(color) {
+  if (gameOver) return;
+  if (color !== currentPlayer) return;
+  if (piecePicked) return;
+
+  piecePicked = true;
+  updatePiles();
+  updateHint();
+}
+
+function placePiece(row, col) {
+  if (gameOver || grid[row][col]) return;
+  if (!piecePicked) return;
+
+  grid[row][col] = currentPlayer;
+  lastMove = [row, col];
+  moveHistory.push({ row, col, player: currentPlayer });
+  piecePicked = false;
+
+  // 落子后重置双方的悔棋标记
+  redUndoUsed = false;
+  blackUndoUsed = false;
+
+  if (checkWin(row, col)) {
+    gameOver = true;
+    updateAll();
+    draw();
+    setTimeout(showWinDialog, 500);
+    return;
+  }
+
+  if (checkDraw()) {
+    gameOver = true;
+    statusEl.textContent = '🤝 平局！';
+    statusEl.style.color = '#fff';
+    updateAll();
+    draw();
+    setTimeout(showDrawDialog, 400);
+    return;
+  }
+
+  currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+  updateAll();
+  draw();
+}
+
+function checkWin(row, col) {
+  const player = grid[row][col];
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for (const [dr, dc] of dirs) {
+    const cells = [[row, col]];
+    for (let i = 1; i < 5; i++) {
+      const r = row + dr*i, c = col + dc*i;
+      if (r>=0 && r<SIZE && c>=0 && c<SIZE && grid[r][c]===player) cells.push([r,c]);
+      else break;
+    }
+    for (let i = 1; i < 5; i++) {
+      const r = row - dr*i, c = col - dc*i;
+      if (r>=0 && r<SIZE && c>=0 && c<SIZE && grid[r][c]===player) cells.unshift([r,c]);
+      else break;
+    }
+    if (cells.length >= 5) { winningCells = cells; return true; }
+  }
+  return false;
+}
+
+function checkDraw() {
+  return grid.every(row => row.every(c => c !== null));
+}
+
+// ========== UI 更新 ==========
+function updatePiles() {
+  if (gameOver) {
+    redPile.classList.add('disabled'); redPile.classList.remove('active');
+    blackPile.classList.add('disabled'); blackPile.classList.remove('active');
+    redPicked.classList.remove('show'); blackPicked.classList.remove('show');
+    return;
+  }
+  if (currentPlayer === 'red') {
+    redPile.classList.remove('disabled'); redPile.classList.add('active');
+    blackPile.classList.add('disabled'); blackPile.classList.remove('active');
+    blackPicked.classList.remove('show');
+    if (piecePicked) redPicked.classList.add('show');
+    else redPicked.classList.remove('show');
+  } else {
+    blackPile.classList.remove('disabled'); blackPile.classList.add('active');
+    redPile.classList.add('disabled'); redPile.classList.remove('active');
+    redPicked.classList.remove('show');
+    if (piecePicked) blackPicked.classList.add('show');
+    else blackPicked.classList.remove('show');
+  }
+}
+
+function updateHint() {
+  if (gameOver) { hintEl.textContent = ''; return; }
+  if (!piecePicked) {
+    hintEl.textContent = currentPlayer === 'red'
+      ? '👈 请先点击红方棋盒取子'
+      : '请先点击黑方棋盒取子 👉';
+  } else {
+    hintEl.textContent = '👇 请点击棋盘落子';
+  }
+}
+
+function updateStatus() {
+  if (gameOver) {
+    statusEl.textContent = currentPlayer === 'red' ? '🔴 红方获胜！' : '⚫ 黑方获胜！';
+    statusEl.style.color = currentPlayer === 'red' ? '#ff6b6b' : '#aaa';
+  } else {
+    statusEl.textContent = currentPlayer === 'red' ? '🔴 红方落子' : '⚫ 黑方落子';
+    statusEl.style.color = currentPlayer === 'red' ? '#ff6b6b' : '#aaa';
+  }
+}
+
+function updateUndoButtons() {
+  redUndoBtn.disabled = !canUndo('red');
+  blackUndoBtn.disabled = !canUndo('black');
+
+  if (redUndoUsed) {
+    redUndoBtn.textContent = '↩ 已悔棋';
+  } else {
+    redUndoBtn.textContent = '↩ 红方悔棋';
+  }
+  if (blackUndoUsed) {
+    blackUndoBtn.textContent = '↩ 已悔棋';
+  } else {
+    blackUndoBtn.textContent = '↩ 黑方悔棋';
+  }
+}
+
+function updateAll() {
+  updateStatus();
+  updatePiles();
+  updateHint();
+  updateUndoButtons();
+}
+
+function initGrid() {
+  grid = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
+  currentPlayer = 'red';
+  gameOver = false;
+  winningCells = [];
+  lastMove = null;
+  piecePicked = false;
+  moveHistory = [];
+  redUndoUsed = false;
+  blackUndoUsed = false;
+  document.getElementById('overlay').classList.add('hidden');
+  updateAll();
+  draw();
+}
+
+// ========== 绘制 ==========
+function draw() {
+  ctx.clearRect(0, 0, BOARD_PX, BOARD_PX);
+  ctx.fillStyle = '#c8a45c';
+  ctx.fillRect(0, 0, BOARD_PX, BOARD_PX);
+
+  ctx.strokeStyle = '#5a4020';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < SIZE; i++) {
+    const pos = PADDING + i * CELL;
+    ctx.beginPath(); ctx.moveTo(PADDING, pos); ctx.lineTo(PADDING + (SIZE-1)*CELL, pos); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pos, PADDING); ctx.lineTo(pos, PADDING + (SIZE-1)*CELL); ctx.stroke();
+  }
+
+  const stars = [[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]];
+  ctx.fillStyle = '#5a4020';
+  for (const [r,c] of stars) {
+    ctx.beginPath(); ctx.arc(PADDING + c*CELL, PADDING + r*CELL, 3.5, 0, Math.PI*2); ctx.fill();
+  }
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (!grid[r][c]) continue;
+      const x = PADDING + c * CELL, y = PADDING + r * CELL, radius = CELL * 0.44;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath(); ctx.arc(x+2, y+2, radius, 0, Math.PI*2); ctx.fill();
+
+      const grad = ctx.createRadialGradient(x-3, y-3, radius*0.1, x, y, radius);
+      if (grid[r][c] === 'red') { grad.addColorStop(0, '#ff9999'); grad.addColorStop(1, '#b5302a'); }
+      else { grad.addColorStop(0, '#888'); grad.addColorStop(1, '#1a1a1a'); }
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI*2); ctx.fill();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.beginPath(); ctx.arc(x-5, y-5, radius*0.35, 0, Math.PI*2); ctx.fill();
+
+      if (winningCells.some(([wr,wc]) => wr===r && wc===c)) {
+        ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3;
+        ctx.shadowColor = '#FFD700'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(x, y, radius+3, 0, Math.PI*2); ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+
+  if (lastMove) {
+    const [lr, lc] = lastMove;
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath(); ctx.arc(PADDING + lc*CELL, PADDING + lr*CELL, 4, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+// ========== 事件 ==========
+canvas.addEventListener('click', (e) => {
+  if (gameOver) return;
+  const rect = canvas.getBoundingClientRect();
+  const col = Math.round((e.clientX - rect.left - PADDING) / CELL);
+  const row = Math.round((e.clientY - rect.top - PADDING) / CELL);
+  if (row >= 0 && row < SIZE && col >= 0 && col < SIZE) placePiece(row, col);
+});
+canvas.addEventListener('touchstart', (e) => {
+  if (gameOver) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const col = Math.round((e.touches[0].clientX - rect.left - PADDING) / CELL);
+  const row = Math.round((e.touches[0].clientY - rect.top - PADDING) / CELL);
+  if (row >= 0 && row < SIZE && col >= 0 && col < SIZE) placePiece(row, col);
+});
+
+function showWinDialog() {
+  document.getElementById('winIcon').textContent = currentPlayer === 'red' ? '🔴' : '⚫';
+  document.getElementById('winText').textContent = (currentPlayer==='red'?'红方':'黑方') + ' 五子连珠，获胜！';
+  document.getElementById('overlay').classList.remove('hidden');
+}
+function showDrawDialog() {
+  document.getElementById('winIcon').textContent = '🤝';
+  document.getElementById('winText').textContent = '棋盘满了，平局！';
+  document.getElementById('overlay').classList.remove('hidden');
+}
+function restart() { initGrid(); }
+
+initGrid();
+</script>
+</body>
+</html>
